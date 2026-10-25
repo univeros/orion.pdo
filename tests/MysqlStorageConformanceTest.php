@@ -22,6 +22,19 @@ final class MysqlStorageConformanceTest extends PdoStorageConformance
         parent::setUp();
     }
 
+    public function testInstallingInsideTheHostsTransactionIsRefusedBecauseMysqlDdlWouldCommitIt(): void
+    {
+        $pdo = $this->connect();
+        $pdo->beginTransaction();
+        try {
+            $this->expectException(\LogicException::class);
+
+            \Orion\Pdo\Installer::install($pdo, self::tables());
+        } finally {
+            $pdo->rollBack();
+        }
+    }
+
     protected function connect(): PDO
     {
         return new PDO((string) getenv('ORION_MYSQL_DSN'), (string) getenv('ORION_MYSQL_USER'), (string) getenv('ORION_MYSQL_PASSWORD'));

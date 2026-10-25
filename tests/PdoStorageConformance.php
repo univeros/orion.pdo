@@ -59,6 +59,28 @@ abstract class PdoStorageConformance extends StorageConformanceTestCase
         ));
     }
 
+    public function testTwoStoragesOnOneConnectionNestTheirSavepoints(): void
+    {
+        $other = new PdoStorage($this->pdo);
+        $storage = new PdoStorage($this->pdo);
+        $thrown = null;
+        $this->inHostTransaction(function () use ($storage, $other, &$thrown): void {
+            try {
+                $storage->transaction(function () use ($storage, $other): void {
+                    $storage->insert(self::ENTITY, ['id' => 'outer', 'name' => null, 'position' => 1, 'created_at' => new DateTimeImmutable()]);
+                    $other->transaction(fn() => $other->insert(self::ENTITY, ['id' => 'inner', 'name' => null, 'position' => 2, 'created_at' => new DateTimeImmutable()]));
+
+                    throw new \RuntimeException('outer failed');
+                });
+            } catch (\RuntimeException $exception) {
+                $thrown = $exception;
+            }
+        });
+
+        self::assertSame('outer failed', $thrown?->getMessage());
+        self::assertSame(0, $storage->count(self::ENTITY, []));
+    }
+
     protected function inHostTransaction(callable $work): void
     {
         $this->pdo->beginTransaction();

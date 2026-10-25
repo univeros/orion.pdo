@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace Orion\Pdo;
 
+use LogicException;
 use Orion\Storage\Schema;
 use Orion\Storage\Table;
 use PDO;
 
 /**
  * What a host's migration or console command calls to install Orion's tables on its connection. A table that
- * already exists is left as it is, rows and columns alike, so installing twice is safe.
+ * already exists is left as it is, rows and columns alike, so installing twice is safe. On MySQL, DDL commits any
+ * open transaction, so installing inside one is refused. `uninstall()` drops tables: for tests and teardown.
  */
 final class Installer
 {
@@ -20,7 +22,7 @@ final class Installer
      */
     public static function install(PDO $pdo, ?array $tables = null): array
     {
-        $dialect = Dialect::of($pdo);
+        $dialect = self::dialect($pdo);
         $created = [];
         foreach ($tables ?? Schema::tables() as $table) {
             if (self::exists($pdo, $dialect, $table->name)) {
@@ -40,10 +42,20 @@ final class Installer
      */
     public static function uninstall(PDO $pdo, ?array $tables = null): void
     {
-        $dialect = Dialect::of($pdo);
+        $dialect = self::dialect($pdo);
         foreach ($tables ?? Schema::tables() as $table) {
             $pdo->exec(SqlSchema::drop($table, $dialect));
         }
+    }
+
+    private static function dialect(PDO $pdo): Dialect
+    {
+        $dialect = Dialect::of($pdo);
+        if ($dialect === Dialect::Mysql && $pdo->inTransaction()) {
+            throw new LogicException('MySQL commits an open transaction on DDL; install or uninstall Orion\'s tables outside one.');
+        }
+
+        return $dialect;
     }
 
     private static function exists(PDO $pdo, Dialect $dialect, string $table): bool

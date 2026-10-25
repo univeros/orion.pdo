@@ -35,8 +35,9 @@ use function sprintf;
  */
 final class PdoStorage implements Storage
 {
+    private static int $savepoints = 0;
+
     private readonly Dialect $dialect;
-    private int $savepoints = 0;
 
     public function __construct(private readonly PDO $pdo)
     {
@@ -94,8 +95,17 @@ final class PdoStorage implements Storage
         $set = array_map(fn(string $column): string => $this->identifier($column) . ' = ?', array_keys($data));
         [$where, $params] = $this->where($criteria);
         $sql = sprintf('UPDATE %s SET %s%s', $this->identifier($table), implode(', ', $set), $where);
+        if ($this->dialect !== Dialect::Mysql) {
+            return $this->run($sql, [...array_values($data), ...$params])->rowCount();
+        }
 
-        return $this->run($sql, [...array_values($data), ...$params])->rowCount();
+        // MySQL reports changed rows, not matched ones, and the host's connection is not ours to set FOUND_ROWS on.
+        return $this->transaction(function () use ($table, $criteria, $sql, $data, $params): int {
+            $matched = $this->count($table, $criteria);
+            $this->run($sql, [...array_values($data), ...$params]);
+
+            return $matched;
+        });
     }
 
     #[Override]
@@ -126,13 +136,14 @@ final class PdoStorage implements Storage
 
                 return $result;
             } catch (Throwable $exception) {
-                $this->pdo->rollBack();
+                $this->quietly($this->rollBackIfOpen(...));
 
                 throw $exception;
             }
         }
 
-        $savepoint = 'orion_savepoint_' . ++$this->savepoints;
+        // Process-wide, so two storages (or two Orion graphs) on one connection never reuse a savepoint name.
+        $savepoint = 'orion_savepoint_' . ++self::$savepoints;
         $this->pdo->exec('SAVEPOINT ' . $savepoint);
         try {
             $result = $fn();
@@ -140,7 +151,7 @@ final class PdoStorage implements Storage
 
             return $result;
         } catch (Throwable $exception) {
-            $this->pdo->exec('ROLLBACK TO SAVEPOINT ' . $savepoint);
+            $this->quietly(fn() => $this->pdo->exec('ROLLBACK TO SAVEPOINT ' . $savepoint));
 
             throw $exception;
         }
@@ -208,6 +219,27 @@ final class PdoStorage implements Storage
     {
         if ($criteria === []) {
             throw new InvalidArgumentException(sprintf('An %s needs criteria; an unbounded one is refused.', $operation));
+        }
+    }
+
+    /**
+     * Runs a rollback without letting its own failure hide the exception that caused it.
+     */
+    private function quietly(callable $rollback): void
+    {
+        try {
+            $rollback();
+        } catch (Throwable) {
+        }
+    }
+
+    /**
+     * The callable may have ended the transaction itself, or the commit may have failed after doing so.
+     */
+    private function rollBackIfOpen(): void
+    {
+        if ($this->pdo->inTransaction()) {
+            $this->pdo->rollBack();
         }
     }
 
