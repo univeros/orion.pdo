@@ -1,0 +1,48 @@
+{
+    "name": "orion-search/pdo",
+    "description": "Orion storage over PDO (PostgreSQL, MySQL, SQLite) on the host's own connection, with the table installer",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "2am.tech",
+            "homepage": "https://2am.tech"
+        }
+    ],
+    "keywords": [
+        "search",
+        "outbox",
+        "pdo",
+        "postgresql",
+        "mysql",
+        "sqlite"
+    ],
+    "require": {
+        "php": ">=8.3",
+        "ext-pdo": "*",
+        "orion-search/core": "^0.1"
+    },
+    "require-dev": {
+        "orion-search/testing": "^0.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Orion\\Pdo\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Orion\\Pdo\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "0.1.x-dev"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
