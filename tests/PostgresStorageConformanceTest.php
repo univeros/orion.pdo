@@ -25,4 +25,9 @@ final class PostgresStorageConformanceTest extends PdoStorageConformance
     {
         return new PDO((string) getenv('ORION_PGSQL_DSN'));
     }
+
+    protected function limitLockWait(PDO $pdo): void
+    {
+        $pdo->exec("SET lock_timeout = '200ms'");
+    }
 }

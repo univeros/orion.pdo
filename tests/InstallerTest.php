@@ -17,7 +17,7 @@ final class InstallerTest extends TestCase
     {
         $pdo = new PDO('sqlite::memory:');
 
-        self::assertSame(['orion_outbox', 'orion_index', 'orion_alias', 'orion_receipt'], Installer::install($pdo));
+        self::assertSame(['orion_outbox', 'orion_counter', 'orion_index', 'orion_alias', 'orion_receipt'], Installer::install($pdo));
         self::assertSame([], Installer::install($pdo));
     }
 
@@ -26,20 +26,34 @@ final class InstallerTest extends TestCase
         $pdo = new PDO('sqlite::memory:');
         $pdo->exec('CREATE TABLE "orion_alias" ("alias" TEXT)');
 
-        self::assertSame(['orion_outbox', 'orion_index', 'orion_receipt'], Installer::install($pdo));
+        self::assertSame(['orion_outbox', 'orion_counter', 'orion_index', 'orion_receipt'], Installer::install($pdo));
     }
 
-    public function testTheOutboxOffsetIsUnique(): void
+    public function testTheOutboxOffsetIsUniquePerIndex(): void
     {
         $pdo = new PDO('sqlite::memory:');
         Installer::install($pdo);
         $storage = new PdoStorage($pdo);
-        $row = ['outbox_offset' => 1, 'index_name' => 'products', 'document_id' => '1', 'operation' => 'index', 'payload' => null, 'recorded_at' => new \DateTimeImmutable()];
-        $storage->insert(Schema::OUTBOX, ['id' => 'a', ...$row]);
+        $row = ['outbox_offset' => 1, 'index_name' => 'products', 'operation' => 'index', 'payload' => null, 'recorded_at' => new \DateTimeImmutable()];
+        $storage->insert(Schema::OUTBOX, ['document_id' => 'a', ...$row]);
+        $storage->insert(Schema::OUTBOX, ['document_id' => 'a', ...$row, 'index_name' => 'orders']);
 
         $this->expectException(\PDOException::class);
 
-        $storage->insert(Schema::OUTBOX, ['id' => 'b', ...$row]);
+        $storage->insert(Schema::OUTBOX, ['document_id' => 'b', ...$row]);
+    }
+
+    public function testTheOutboxHoldsOneRowPerDocumentAndIndex(): void
+    {
+        $pdo = new PDO('sqlite::memory:');
+        Installer::install($pdo);
+        $storage = new PdoStorage($pdo);
+        $row = ['index_name' => 'products', 'document_id' => 'a', 'operation' => 'index', 'payload' => null, 'recorded_at' => new \DateTimeImmutable()];
+        $storage->insert(Schema::OUTBOX, ['outbox_offset' => 1, ...$row]);
+
+        $this->expectException(\PDOException::class);
+
+        $storage->insert(Schema::OUTBOX, ['outbox_offset' => 2, ...$row]);
     }
 
     public function testTheHostsConnectionIsNotReconfigured(): void

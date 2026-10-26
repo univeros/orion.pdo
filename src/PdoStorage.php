@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
 use InvalidArgumentException;
+use LogicException;
 use Orion\Storage\Condition;
 use Orion\Storage\Identifier;
 use Orion\Storage\Storage;
@@ -123,6 +124,26 @@ final class PdoStorage implements Storage
         [$where, $params] = $this->where($criteria);
 
         return (int) $this->run(sprintf('SELECT COUNT(*) FROM %s%s', $this->identifier($table), $where), $params)->fetchColumn();
+    }
+
+    #[Override]
+    public function increment(string $table, array $criteria, string $column): ?int
+    {
+        $this->assertBounded('increment', $criteria);
+        [$where, $params] = $this->where($criteria);
+        $quotedTable = $this->identifier($table);
+        $quoted = $this->identifier($column);
+
+        // The UPDATE takes the row lock and holds it to the end of the transaction; reading the row back after it
+        // sees this transaction's own write on every dialect, MySQL's repeatable read included.
+        return $this->transaction(function () use ($quotedTable, $quoted, $where, $params): ?int {
+            $matched = $this->run(sprintf('UPDATE %s SET %s = %s + 1%s', $quotedTable, $quoted, $quoted, $where), $params)->rowCount();
+            if ($matched > 1) {
+                throw new LogicException(sprintf('An increment changes one row; %d match.', $matched));
+            }
+
+            return $matched === 0 ? null : (int) $this->run(sprintf('SELECT %s FROM %s%s', $quoted, $quotedTable, $where), $params)->fetchColumn();
+        });
     }
 
     #[Override]

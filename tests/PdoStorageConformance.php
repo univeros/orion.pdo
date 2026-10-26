@@ -11,7 +11,9 @@ use Orion\Pdo\Installer;
 use Orion\Pdo\PdoStorage;
 use Orion\Storage\Storage;
 use Orion\Testing\StorageConformanceTestCase;
+use Orion\Storage\Schema;
 use PDO;
+use PDOException;
 use Throwable;
 
 use function array_fill;
@@ -31,6 +33,11 @@ abstract class PdoStorageConformance extends StorageConformanceTestCase
     private PDO $pdo;
 
     abstract protected function connect(): PDO;
+
+    /**
+     * Makes a second connection give up quickly on a locked row instead of waiting the database's default.
+     */
+    abstract protected function limitLockWait(PDO $pdo): void;
 
     protected function createStorage(): Storage
     {
@@ -79,6 +86,27 @@ abstract class PdoStorageConformance extends StorageConformanceTestCase
 
         self::assertSame('outer failed', $thrown?->getMessage());
         self::assertSame(0, $storage->count(self::ENTITY, []));
+    }
+
+    public function testAnIncrementHoldsItsRowUntilTheTransactionEnds(): void
+    {
+        $storage = new PdoStorage($this->pdo);
+        $storage->insert(Schema::COUNTER, ['name' => 'outbox:products', 'value' => 0]);
+        $second = $this->connect();
+        $this->limitLockWait($second);
+        $other = new PdoStorage($second);
+        $this->inHostTransaction(function () use ($storage, $other): void {
+            self::assertSame(1, $storage->increment(Schema::COUNTER, ['name' => 'outbox:products'], 'value'));
+            $refused = null;
+            try {
+                $other->increment(Schema::COUNTER, ['name' => 'outbox:products'], 'value');
+            } catch (Throwable $exception) {
+                $refused = $exception;
+            }
+            self::assertInstanceOf(PDOException::class, $refused, 'A second connection incremented a row another transaction holds.');
+        });
+
+        self::assertSame(2, $other->increment(Schema::COUNTER, ['name' => 'outbox:products'], 'value'));
     }
 
     protected function inHostTransaction(callable $work): void
