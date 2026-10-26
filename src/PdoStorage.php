@@ -14,7 +14,9 @@ use Orion\Storage\Identifier;
 use Orion\Storage\Storage;
 use Orion\Support\Assert;
 use Override;
+use Orion\Storage\DuplicateKey;
 use PDO;
+use PDOException;
 use PDOStatement;
 use Throwable;
 
@@ -28,6 +30,7 @@ use function is_array;
 use function is_bool;
 use function is_int;
 use function sprintf;
+use function str_contains;
 
 /**
  * {@see Storage} over the host's PDO connection. Identifiers are checked and quoted, every value is bound, dates go
@@ -86,7 +89,26 @@ final class PdoStorage implements Storage
             implode(', ', array_map($this->identifier(...), array_keys($row))),
             implode(', ', array_fill(0, count($row), '?')),
         );
-        $this->run($sql, array_values($row));
+        try {
+            $this->run($sql, array_values($row));
+        } catch (PDOException $exception) {
+            throw self::isDuplicate($exception) ? new DuplicateKey(sprintf('%s already holds a row with that key.', $table), 0, $exception) : $exception;
+        }
+    }
+
+    /**
+     * Unique violations only: PostgreSQL's 23505, MySQL's 1062, SQLite's UNIQUE and PRIMARY KEY failures; any other
+     * integrity error (a NOT NULL, say) is not a race and stays what it is.
+     */
+    private static function isDuplicate(PDOException $exception): bool
+    {
+        $info = $exception->errorInfo ?? [];
+
+        return match ((string) ($info[0] ?? '')) {
+            '23505' => true,
+            '23000' => (int) ($info[1] ?? 0) === 1062 || str_contains((string) ($info[2] ?? ''), 'UNIQUE constraint failed'),
+            default => false,
+        };
     }
 
     #[Override]

@@ -38,7 +38,7 @@ final class InstallerTest extends TestCase
         $storage->insert(Schema::OUTBOX, ['document_id' => 'a', ...$row]);
         $storage->insert(Schema::OUTBOX, ['document_id' => 'a', ...$row, 'index_name' => 'orders']);
 
-        $this->expectException(\PDOException::class);
+        $this->expectException(\Orion\Storage\DuplicateKey::class);
 
         $storage->insert(Schema::OUTBOX, ['document_id' => 'b', ...$row]);
     }
@@ -51,7 +51,7 @@ final class InstallerTest extends TestCase
         $row = ['index_name' => 'products', 'document_id' => 'a', 'operation' => 'index', 'payload' => null, 'recorded_at' => new \DateTimeImmutable()];
         $storage->insert(Schema::OUTBOX, ['outbox_offset' => 1, ...$row]);
 
-        $this->expectException(\PDOException::class);
+        $this->expectException(\Orion\Storage\DuplicateKey::class);
 
         $storage->insert(Schema::OUTBOX, ['outbox_offset' => 2, ...$row]);
     }
