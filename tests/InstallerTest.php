@@ -17,7 +17,7 @@ final class InstallerTest extends TestCase
     {
         $pdo = new PDO('sqlite::memory:');
 
-        self::assertSame(['orion_outbox', 'orion_counter', 'orion_dead_letter', 'orion_index', 'orion_alias', 'orion_receipt'], Installer::install($pdo));
+        self::assertSame(['orion_outbox', 'orion_counter', 'orion_dead_letter', 'orion_index', 'orion_alias', 'orion_reindex', 'orion_receipt'], Installer::install($pdo));
         self::assertSame([], Installer::install($pdo));
     }
 
@@ -26,7 +26,7 @@ final class InstallerTest extends TestCase
         $pdo = new PDO('sqlite::memory:');
         $pdo->exec('CREATE TABLE "orion_alias" ("alias" TEXT)');
 
-        self::assertSame(['orion_outbox', 'orion_counter', 'orion_dead_letter', 'orion_index', 'orion_receipt'], Installer::install($pdo));
+        self::assertSame(['orion_outbox', 'orion_counter', 'orion_dead_letter', 'orion_index', 'orion_reindex', 'orion_receipt'], Installer::install($pdo));
     }
 
     public function testTheOutboxOffsetIsUniquePerIndex(): void
