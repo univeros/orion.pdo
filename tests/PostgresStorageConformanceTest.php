@@ -13,6 +13,8 @@ use function getenv;
  */
 final class PostgresStorageConformanceTest extends PdoStorageConformance
 {
+    use CountsWhatUpdatesMatch;
+
     protected function setUp(): void
     {
         if (getenv('ORION_PGSQL_DSN') === false) {

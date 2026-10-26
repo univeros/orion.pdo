@@ -14,6 +14,8 @@ use function getenv;
  */
 final class MysqlStorageConformanceTest extends PdoStorageConformance
 {
+    use CountsWhatUpdatesMatch;
+
     protected function setUp(): void
     {
         if (getenv('ORION_MYSQL_DSN') === false) {
